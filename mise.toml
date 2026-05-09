@@ -1,0 +1,33 @@
+[tools]
+rust = "1.82"
+
+[env]
+SUBSCRIPTION_TEMPLATE_DIR = "templates"
+NODE_LOCATION = "JP"
+HOST = "0.0.0.0"
+PORT = "2002"
+RUST_LOG = "info"
+
+[tasks.server]
+description = "Run the GraphQL and subscription HTTP backend"
+run = "cargo run --bin sing-box-server"
+
+[tasks.test]
+description = "Run the Rust test suite"
+run = "cargo test"
+
+[tasks.fmt]
+description = "Format Rust sources"
+run = "cargo fmt"
+
+[tasks.generate-config]
+description = "Render the sing-box server config from enabled database users"
+run = "cargo run -- generate-config"
+
+[tasks.generate-subscription]
+description = "Generate a subscription file for UUID and FORMAT"
+run = "cargo run -- generate-subscription \"$UUID\" --format \"${FORMAT:-sing-box}\" --output-dir \"${OUTPUT_DIR:-.}\""
+
+[tasks.generate-subscription-all]
+description = "Generate subscription files for all enabled users"
+run = "cargo run -- generate-subscription-all --format \"${FORMAT:-sing-box}\" --output-dir \"${OUTPUT_DIR:-.}\""

@@ -1,0 +1,618 @@
+{
+  "dns": {
+    "rules": [
+      {
+        "domain_suffix": [
+          "arpa"
+        ],
+        "action": "route",
+        "server": "dns-dhcp"
+      },
+      {
+        "domain_suffix": [
+          "ts.net"
+        ],
+        "action": "route",
+        "server": "dns-tailscale"
+      },
+      {
+        "action": "evaluate",
+        "server": "dns-resolved"
+      },
+      {
+        "match_response": true,
+        "ip_accept_any": true,
+        "action": "respond"
+      },
+      {
+        "clash_mode": "direct",
+        "action": "route",
+        "server": "dns-local"
+      },
+      {
+        "clash_mode": "global",
+        "action": "route",
+        "server": "dns-fakeip"
+      },
+      {
+        "rule_set": [
+          "geosite-cn",
+          "direct_chao",
+          "direct",
+          "apple",
+          "china_max",
+          "download",
+          "lan"
+        ],
+        "action": "route",
+        "server": "dns-local"
+      },
+      {
+        "rule_set": [
+          "claude",
+          "copilot",
+          "gemini",
+          "openai",
+          "game_chao",
+          "game",
+          "disney",
+          "netflix",
+          "hbo_usa",
+          "spotify",
+          "tiktok",
+          "youtube",
+          "youtube_music",
+          "proxy_chao",
+          "developer",
+          "amazon_cloud",
+          "apple_proxy",
+          "google",
+          "github",
+          "global"
+        ],
+        "action": "route",
+        "server": "dns-fakeip"
+      },
+      {
+        "inbound": [
+          "socks-in",
+          "http-in",
+          "tun-in"
+        ],
+        "action": "route",
+        "server": "dns-fakeip"
+      }
+    ],
+    "servers": [
+      {
+        "tag": "dns-hosts",
+        "type": "hosts"
+      },
+      {
+        "tag": "dns-resolved",
+        "type": "resolved",
+        "service": "services-resolved",
+        "accept_default_resolvers": false
+      },
+      {
+        "tag": "dns-local",
+        "type": "local"
+      },
+      {
+        "tag": "dns-dhcp",
+        "type": "dhcp"
+      },
+      {
+        "tag": "dns-fakeip",
+        "type": "fakeip",
+        "inet4_range": "198.18.0.0/15",
+        "inet6_range": "fc00::/18"
+      },
+      {
+        "tag": "dns-tailscale",
+        "type": "tailscale",
+        "endpoint": "endpoints-tailscale",
+        "accept_default_resolvers": false
+      },
+      {
+        "tag": "doh-cloudflare",
+        "type": "h3",
+        "server": "dns.cloudflare.com",
+        "path": "/dns-query",
+        "domain_resolver": "dns-cloudflare",
+        "detour": "🌐 Proxy"
+      },
+      {
+        "tag": "doh-google",
+        "type": "h3",
+        "server": "dns.google",
+        "path": "/dns-query",
+        "domain_resolver": "dns-google",
+        "detour": "🌐 Proxy"
+      },
+      {
+        "tag": "doh-aliyun",
+        "type": "h3",
+        "server": "dns.alidns.com",
+        "path": "/dns-query",
+        "domain_resolver": "dns-aliyun"
+      },
+      {
+        "tag": "dns-cloudflare",
+        "type": "udp",
+        "server": "1.1.1.1"
+      },
+      {
+        "tag": "dns-google",
+        "type": "udp",
+        "server": "8.8.8.8"
+      },
+      {
+        "tag": "dns-aliyun",
+        "type": "udp",
+        "server": "223.5.5.5"
+      }
+    ],
+    "strategy": "prefer_ipv4",
+    "final": "dns-local"
+  },
+  "endpoints": [
+    {
+      "tag": "endpoints-tailscale",
+      "type": "tailscale",
+      "state_directory": "",
+      "auth_key": "",
+      "control_url": "",
+      "ephemeral": false,
+      "hostname": "",
+      "accept_routes": false,
+      "exit_node": "",
+      "exit_node_allow_lan_access": false,
+      "advertise_routes": [],
+      "advertise_exit_node": false,
+      "domain_resolver": "dns-cloudflare"
+    }
+  ],
+  "log": {
+    "disabled": false,
+    "level": "warn",
+    "timestamp": true
+  },
+  "ntp": {
+    "enabled": false,
+    "server": "time.apple.com",
+    "server_port": 123,
+    "interval": "30m"
+  },
+  "outbounds": [
+    {
+      "tag": "🟢 Direct",
+      "type": "direct"
+    },
+    {
+      "tag": "🔴 Reject",
+      "type": "block"
+    },
+    {
+      "tag": "🌐 Proxy",
+      "type": "selector",
+      "default": "✨ Auto",
+      "outbounds": [
+        "✨ Auto",
+        "🇯🇵 Japan 01",
+        "🇯🇵 Japan 02",
+        "🇯🇵 Japan 03",
+        "🇯🇵 Japan 04",
+        "🇯🇵 Japan 05",
+        "🇯🇵 Japan 06"
+      ]
+    },
+    {
+      "tag": "✨ Auto",
+      "type": "urltest",
+      "outbounds": [
+        "🇯🇵 Japan 01",
+        "🇯🇵 Japan 02",
+        "🇯🇵 Japan 03",
+        "🇯🇵 Japan 04",
+        "🇯🇵 Japan 05",
+        "🇯🇵 Japan 06"
+      ],
+      "url": "https://www.gstatic.com/generate_204",
+      "interval": "300s"
+    },
+    {
+      "tag": "📺 AD",
+      "type": "selector",
+      "default": "🔴 Reject",
+      "outbounds": [
+        "🌐 Proxy",
+        "🟢 Direct",
+        "🔴 Reject"
+      ]
+    },
+    {
+      "tag": "🧠 AI",
+      "type": "selector",
+      "default": "🔴 Reject",
+      "outbounds": [
+        "🌐 Proxy",
+        "🟢 Direct"
+      ]
+    },
+    {
+      "tag": "🎮 Game",
+      "type": "selector",
+      "default": "🌐 Proxy",
+      "outbounds": [
+        "🌐 Proxy",
+        "🟢 Direct"
+      ]
+    },
+    {
+      "tag": "🎥 Media",
+      "type": "selector",
+      "default": "🌐 Proxy",
+      "outbounds": [
+        "🌐 Proxy",
+        "🟢 Direct"
+      ]
+    },
+    {
+      "tag": "🐟 Final",
+      "type": "selector",
+      "default": "🌐 Proxy",
+      "outbounds": [
+        "🌐 Proxy",
+        "🟢 Direct"
+      ]
+    }
+  ],
+  "route": {
+    "rule_set": [
+      {
+        "tag": "geoip-cn",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "geosite-cn",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "advertising",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/Advertising/Advertising.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "claude",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/Claude/Claude.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "copilot",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/Copilot/Copilot.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "gemini",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/Gemini/Gemini.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "openai",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/OpenAI/OpenAI.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "direct_chao",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/Direct/Direct.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "apple",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/Apple/Apple.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "china_max",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/ChinaMax/ChinaMax.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "direct",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/Direct/Direct.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "download",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/Download/Download.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "lan",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/Lan/Lan.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "game_chao",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/Game/Game.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "game",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/Game/Game.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "disney",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/Disney/Disney.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "netflix",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/Netflix/Netflix.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "hbo_usa",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/HBOUSA/HBOUSA.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "spotify",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/Spotify/Spotify.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "tiktok",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/TikTok/TikTok.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "youtube",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/YouTube/YouTube.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "youtube_music",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/YouTubeMusic/YouTubeMusic.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "proxy_chao",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/Proxy/Proxy.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "amazon_cloud",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/AmazonCloud/AmazonCloud.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "apple_proxy",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/AppleProxy/AppleProxy.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "developer",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/Developer/Developer.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "github",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/GitHub/GitHub.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "global",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/Global/Global.srs",
+        "download_detour": "🌐 Proxy"
+      },
+      {
+        "tag": "google",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/senshinya/singbox_ruleset/main/rule/Google/Google.srs",
+        "download_detour": "🌐 Proxy"
+      }
+    ],
+    "rules": [
+      {
+        "action": "sniff"
+      },
+      {
+        "protocol": "dns",
+        "action": "hijack-dns"
+      },
+      {
+        "ip_is_private": true,
+        "outbound": "🟢 Direct"
+      },
+      {
+        "rule_set": "advertising",
+        "outbound": "📺 AD"
+      },
+      {
+        "rule_set": "geosite-cn",
+        "outbound": "🟢 Direct"
+      },
+      {
+        "rule_set": "claude",
+        "outbound": "🧠 AI"
+      },
+      {
+        "rule_set": "copilot",
+        "outbound": "🧠 AI"
+      },
+      {
+        "rule_set": "gemini",
+        "outbound": "🧠 AI"
+      },
+      {
+        "rule_set": "openai",
+        "outbound": "🧠 AI"
+      },
+      {
+        "rule_set": "direct_chao",
+        "outbound": "🟢 Direct"
+      },
+      {
+        "rule_set": "direct",
+        "outbound": "🟢 Direct"
+      },
+      {
+        "rule_set": "apple",
+        "outbound": "🟢 Direct"
+      },
+      {
+        "rule_set": "apple_proxy",
+        "outbound": "🌐 Proxy"
+      },
+      {
+        "rule_set": "china_max",
+        "outbound": "🟢 Direct"
+      },
+      {
+        "rule_set": "download",
+        "outbound": "🟢 Direct"
+      },
+      {
+        "rule_set": "lan",
+        "outbound": "🟢 Direct"
+      },
+      {
+        "rule_set": "game_chao",
+        "outbound": "🎮 Game"
+      },
+      {
+        "rule_set": "game",
+        "outbound": "🎮 Game"
+      },
+      {
+        "rule_set": "disney",
+        "outbound": "🎥 Media"
+      },
+      {
+        "rule_set": "netflix",
+        "outbound": "🎥 Media"
+      },
+      {
+        "rule_set": "hbo_usa",
+        "outbound": "🎥 Media"
+      },
+      {
+        "rule_set": "spotify",
+        "outbound": "🎥 Media"
+      },
+      {
+        "rule_set": "tiktok",
+        "outbound": "🎥 Media"
+      },
+      {
+        "rule_set": "youtube",
+        "outbound": "🎥 Media"
+      },
+      {
+        "rule_set": "youtube_music",
+        "outbound": "🎥 Media"
+      },
+      {
+        "rule_set": "proxy_chao",
+        "outbound": "🌐 Proxy"
+      },
+      {
+        "rule_set": "developer",
+        "outbound": "🌐 Proxy"
+      },
+      {
+        "rule_set": "amazon_cloud",
+        "outbound": "🌐 Proxy"
+      },
+      {
+        "rule_set": "google",
+        "outbound": "🌐 Proxy"
+      },
+      {
+        "rule_set": "github",
+        "outbound": "🌐 Proxy"
+      },
+      {
+        "rule_set": "global",
+        "outbound": "🌐 Proxy"
+      },
+      {
+        "rule_set": "geoip-cn",
+        "outbound": "🟢 Direct"
+      }
+    ],
+    "auto_detect_interface": true,
+    "default_domain_resolver": "dns-local",
+    "final": "🐟 Final"
+  },
+  "services": [
+    {
+      "tag": "services-resolved",
+      "type": "resolved",
+      "listen": "127.0.0.53",
+      "listen_port": 53
+    }
+  ]
+}
