@@ -163,6 +163,7 @@ GET /subscription/shadowrocket?token=verzea_xxx
 - `NODE_LOCATION`: country or region code for generated node names, such as `JP`, `US`, or `SG`. Default: `Unknown`.
 - `NODE_NAME_BASE`: full node name prefix override, such as `🇯🇵 Japan`. When set, it overrides `NODE_LOCATION`.
 - `MASTER_SECRET`: optional server-side secret for deriving protocol passwords. When empty, passwords are derived from the user token only.
+- `EMAIL_ALLOW_LIST`: optional comma- or newline-separated email allow list for GraphQL registration. Empty means all emails are allowed.
 - `SUBSCRIPTION_TEMPLATE_DIR`: directory containing client subscription templates. Default: `templates`.
 
 The CLI reads `MASTER_SECRET` from the environment and passes it to the library explicitly. Library callers should pass the master secret through the public API instead of relying on environment lookup.

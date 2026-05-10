@@ -16,7 +16,7 @@ use crate::{
         subscription::{self, SubscriptionFormat},
         verify_password, User,
     },
-    server::state::AppState,
+    server::state::{normalize_email, AppState},
 };
 
 pub type AppSchema = Schema<QueryRoot, MutationRoot, EmptySubscription>;
@@ -67,6 +67,7 @@ impl MutationRoot {
         validate_required("password", &input.password)?;
 
         let state = ctx.data::<AppState>()?;
+        validate_email_allowed(state, &input.email)?;
         let secrets = generate_user_secrets(&input.password)?;
 
         let row = sqlx::query(
@@ -307,6 +308,17 @@ fn validate_required(name: &str, value: &str) -> Result<()> {
         return Err(async_graphql::Error::new(format!("{name} cannot be empty")));
     }
     Ok(())
+}
+
+fn validate_email_allowed(state: &AppState, email: &str) -> Result<()> {
+    if state.email_allow_list.is_empty() || state.email_allow_list.contains(&normalize_email(email))
+    {
+        return Ok(());
+    }
+
+    Err(async_graphql::Error::new(
+        "email is not allowed to register",
+    ))
 }
 
 fn invalid_login_error() -> async_graphql::Error {
