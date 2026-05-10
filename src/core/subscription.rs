@@ -155,10 +155,9 @@ pub fn render(
         SubscriptionFormat::SingBox => {
             merge_sing_box_template(&template, config, user, &credentials)
         }
-        SubscriptionFormat::Shadowrocket => Ok(append_fragment(
-            &template,
-            &render_shadowrocket_proxy_section(config, user, &credentials)?,
-        )),
+        SubscriptionFormat::Shadowrocket => {
+            merge_shadowrocket_template(&template, config, user, &credentials)
+        }
     }
 }
 
@@ -416,7 +415,17 @@ fn render_sing_box_outbounds(
         .collect()
 }
 
-fn render_shadowrocket_proxy_section(
+fn merge_shadowrocket_template(
+    template: &str,
+    config: &SubscriptionConfig,
+    user: &User,
+    credentials: &Credentials,
+) -> Result<String> {
+    let proxy_lines = render_shadowrocket_proxy_lines(config, user, credentials)?;
+    Ok(insert_into_ini_section(template, "Proxy", &proxy_lines))
+}
+
+fn render_shadowrocket_proxy_lines(
     config: &SubscriptionConfig,
     user: &User,
     credentials: &Credentials,
@@ -435,7 +444,7 @@ fn render_shadowrocket_proxy_section(
         bail!("sing-box config does not contain Shadowrocket-compatible proxy inbounds");
     }
 
-    Ok(format!("[Proxy]\n{}", proxies.join("")))
+    Ok(proxies.join(""))
 }
 
 fn render_shadowrocket_proxy(
@@ -631,6 +640,60 @@ fn append_fragment(template: &str, fragment: &str) -> String {
     rendered
 }
 
+fn insert_into_ini_section(template: &str, section: &str, lines: &str) -> String {
+    let section_header = format!("[{section}]");
+    let mut output = String::new();
+    let mut inserted = false;
+    let mut in_target_section = false;
+
+    for line in template.split_inclusive('\n') {
+        let trimmed = line.trim();
+        let is_section_header =
+            trimmed.starts_with('[') && trimmed.ends_with(']') && trimmed.len() > 2;
+
+        if is_section_header && in_target_section && !inserted {
+            push_generated_lines(&mut output, lines);
+            inserted = true;
+            in_target_section = false;
+        }
+
+        output.push_str(line);
+
+        if is_section_header {
+            in_target_section = trimmed == section_header;
+        }
+    }
+
+    if in_target_section && !inserted {
+        push_generated_lines(&mut output, lines);
+        inserted = true;
+    }
+
+    if !inserted {
+        if !output.is_empty() && !output.ends_with('\n') {
+            output.push('\n');
+        }
+        if !output.is_empty() {
+            output.push('\n');
+        }
+        output.push_str(&section_header);
+        output.push('\n');
+        push_generated_lines(&mut output, lines);
+    }
+
+    output
+}
+
+fn push_generated_lines(output: &mut String, lines: &str) {
+    if !output.ends_with('\n') {
+        output.push('\n');
+    }
+    output.push_str(lines);
+    if !output.ends_with('\n') {
+        output.push('\n');
+    }
+}
+
 fn template_dir() -> PathBuf {
     env::var("SUBSCRIPTION_TEMPLATE_DIR")
         .map(PathBuf::from)
@@ -698,6 +761,7 @@ mod tests {
 
         let rendered = render(SubscriptionFormat::Shadowrocket, &config, &user, None).unwrap();
 
+        assert_eq!(rendered.matches("[Proxy]").count(), 1);
         assert!(rendered.contains("🇯🇵 Japan 01 = ss"));
         assert!(rendered.contains("🇯🇵 Japan 02 = vmess"));
         assert!(rendered.contains("🇯🇵 Japan 03 = trojan"));
@@ -705,6 +769,39 @@ mod tests {
         assert!(rendered.contains("🇯🇵 Japan 05 = hysteria2"));
         assert!(!rendered.contains("snell"));
         assert!(!rendered.contains("🇯🇵 Japan 06 ="));
+    }
+
+    #[test]
+    fn shadowrocket_merges_generated_lines_into_existing_proxy_section() {
+        let config = sample_subscription_config();
+        let user = sample_user();
+        let credentials = derive_credentials(&user.token, user.uuid, None);
+        let template =
+            "[General]\nloglevel = notify\n[Proxy]\n🟢 Direct = direct\n[Rule]\nFINAL,🐟 Final\n";
+
+        let rendered =
+            merge_shadowrocket_template(&template, &config, &user, &credentials).unwrap();
+        let proxy_index = rendered.find("[Proxy]").unwrap();
+        let generated_index = rendered.find("🇯🇵 Japan 01 = ss").unwrap();
+        let rule_index = rendered.find("[Rule]").unwrap();
+
+        assert_eq!(rendered.matches("[Proxy]").count(), 1);
+        assert!(proxy_index < generated_index);
+        assert!(generated_index < rule_index);
+    }
+
+    #[test]
+    fn shadowrocket_creates_proxy_section_when_template_has_none() {
+        let config = sample_subscription_config();
+        let user = sample_user();
+        let credentials = derive_credentials(&user.token, user.uuid, None);
+        let template = "[General]\nloglevel = notify\n";
+
+        let rendered =
+            merge_shadowrocket_template(&template, &config, &user, &credentials).unwrap();
+
+        assert_eq!(rendered.matches("[Proxy]").count(), 1);
+        assert!(rendered.contains("[Proxy]\n🇯🇵 Japan 01 = ss"));
     }
 
     fn sample_subscription_config() -> SubscriptionConfig {
