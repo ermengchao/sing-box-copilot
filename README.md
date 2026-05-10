@@ -4,6 +4,18 @@ Small CLI tool for generating sing-box users, client subscriptions, and server-s
 
 ## Commands
 
+Bootstrap the first user in an empty database:
+
+```sh
+DATABASE_URL=postgres://... \
+sing-box-copilot bootstrap \
+  --name chao \
+  --email zhangchao050530@gmail.com \
+  --password 'change-me'
+```
+
+`bootstrap` writes directly to PostgreSQL, only works when `users` is empty, and returns the first user's token plus an 8-character invite code as JSON.
+
 Create an insert statement:
 
 ```sh
@@ -110,10 +122,23 @@ mutation {
     name: "chao"
     email: "chao@example.com"
     password: "change-me"
+    inviteCode: "aB3dE5gH"
   }) {
     uuid
     token
     tokenPrefix
+  }
+}
+```
+
+Reset your invite code:
+
+```graphql
+mutation {
+  resetInviteCode(token: "verzea_xxx") {
+    uuid
+    inviteCode
+    inviteCodePrefix
   }
 }
 ```
@@ -190,9 +215,21 @@ CREATE TABLE users (
   password_hash TEXT NOT NULL,
   token TEXT NOT NULL UNIQUE,
   token_prefix TEXT NOT NULL,
+  invited_by_uuid UUID REFERENCES users(uuid),
   enabled BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   token_rotated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS invited_by_uuid UUID REFERENCES users(uuid);
+
+CREATE TABLE user_invites (
+  user_uuid UUID PRIMARY KEY REFERENCES users(uuid) ON DELETE CASCADE,
+  code TEXT NOT NULL UNIQUE,
+  code_prefix TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  rotated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 

@@ -6,8 +6,8 @@ use sqlx::{postgres::PgPoolOptions, Row};
 use uuid::Uuid;
 
 use crate::core::{
-    config as server_config, create_user_sql, derive_credentials, env_u32, rotate_token_sql,
-    set_enabled_sql,
+    config as server_config, create_user_sql, derive_credentials, env_u32, generate_invite_code,
+    generate_user_secrets, rotate_token_sql, set_enabled_sql,
     subscription::{self, SubscriptionConfig, SubscriptionFormat},
     Credentials, User,
 };
@@ -22,6 +22,7 @@ pub async fn run(args: &[String]) -> Result<()> {
             print_usage();
             Ok(())
         }
+        [command, rest @ ..] if command == "bootstrap" => bootstrap(rest).await,
         [command, rest @ ..] if command == "create" => create(rest),
         [command, rest @ ..] if command == "generate-config" => generate_config(rest).await,
         [command, flag] if command == "generate-subscription" && is_help(flag) => {
@@ -49,26 +50,83 @@ pub async fn run(args: &[String]) -> Result<()> {
     }
 }
 
+async fn bootstrap(args: &[String]) -> Result<()> {
+    let options = UserInputOptions::parse(args, print_bootstrap_usage)?;
+    let pool = database_pool().await?;
+    let secrets = generate_user_secrets(&options.password)?;
+    let invite = generate_invite_code();
+    let mut tx = pool.begin().await.context("begin bootstrap transaction")?;
+
+    sqlx::query("LOCK TABLE users IN EXCLUSIVE MODE")
+        .execute(&mut *tx)
+        .await
+        .context("lock users table")?;
+
+    let user_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
+        .fetch_one(&mut *tx)
+        .await
+        .context("count users")?;
+    if user_count != 0 {
+        bail!("bootstrap refused: users table is not empty");
+    }
+
+    let row = sqlx::query(
+        r#"
+        INSERT INTO users (name, email, password_hash, token, token_prefix)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING uuid
+        "#,
+    )
+    .bind(&options.name)
+    .bind(&options.email)
+    .bind(&secrets.password_hash)
+    .bind(&secrets.token)
+    .bind(&secrets.token_prefix)
+    .fetch_one(&mut *tx)
+    .await
+    .context("insert bootstrap user")?;
+    let uuid: Uuid = row.try_get("uuid")?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO user_invites (user_uuid, code, code_prefix)
+        VALUES ($1, $2, $3)
+        "#,
+    )
+    .bind(uuid)
+    .bind(&invite.invite_code)
+    .bind(&invite.invite_code_prefix)
+    .execute(&mut *tx)
+    .await
+    .context("insert bootstrap invite code")?;
+
+    tx.commit().await.context("commit bootstrap transaction")?;
+
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&BootstrapOutput {
+            uuid,
+            name: options.name,
+            email: options.email,
+            token: secrets.token,
+            token_prefix: secrets.token_prefix,
+            invite_code: invite.invite_code,
+            invite_code_prefix: invite.invite_code_prefix,
+        })?
+    );
+
+    Ok(())
+}
+
 fn create(args: &[String]) -> Result<()> {
-    let mut name = None;
-    let mut email = None;
-    let mut password = None;
+    let options = UserInputOptions::parse(args, print_create_usage)?;
     let mut json_output = false;
 
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
-            "--name" => {
+            "--name" | "--email" | "--password" => {
                 index += 1;
-                name = Some(required_arg(args, index, "--name")?.to_owned());
-            }
-            "--email" => {
-                index += 1;
-                email = Some(required_arg(args, index, "--email")?.to_owned());
-            }
-            "--password" => {
-                index += 1;
-                password = Some(required_arg(args, index, "--password")?.to_owned());
             }
             "--json" => {
                 json_output = true;
@@ -82,10 +140,7 @@ fn create(args: &[String]) -> Result<()> {
         index += 1;
     }
 
-    let name = name.context("--name is required")?;
-    let email = email.context("--email is required")?;
-    let password = password.context("--password is required")?;
-    let created = create_user_sql(&name, &email, &password)?;
+    let created = create_user_sql(&options.name, &options.email, &options.password)?;
 
     if json_output {
         println!("{}", serde_json::to_string_pretty(&created)?);
@@ -293,6 +348,74 @@ struct InspectOutput {
     credentials: Credentials,
 }
 
+#[derive(Debug)]
+struct UserInputOptions {
+    name: String,
+    email: String,
+    password: String,
+}
+
+impl UserInputOptions {
+    fn parse(args: &[String], print_help: fn()) -> Result<Self> {
+        let mut name = None;
+        let mut email = None;
+        let mut password = None;
+
+        let mut index = 0;
+        while index < args.len() {
+            match args[index].as_str() {
+                "--name" => {
+                    index += 1;
+                    name = Some(required_arg(args, index, "--name")?.to_owned());
+                }
+                "--email" => {
+                    index += 1;
+                    email = Some(required_arg(args, index, "--email")?.to_owned());
+                }
+                "--password" => {
+                    index += 1;
+                    password = Some(required_arg(args, index, "--password")?.to_owned());
+                }
+                "--json" => {}
+                "--help" | "-h" => {
+                    print_help();
+                    std::process::exit(0);
+                }
+                option => bail!("unknown option: {option}"),
+            }
+            index += 1;
+        }
+
+        let parsed = Self {
+            name: name.context("--name is required")?,
+            email: email.context("--email is required")?,
+            password: password.context("--password is required")?,
+        };
+        if parsed.name.is_empty() {
+            bail!("name cannot be empty");
+        }
+        if parsed.email.is_empty() {
+            bail!("email cannot be empty");
+        }
+        if parsed.password.is_empty() {
+            bail!("password cannot be empty");
+        }
+
+        Ok(parsed)
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct BootstrapOutput {
+    uuid: Uuid,
+    name: String,
+    email: String,
+    token: String,
+    token_prefix: String,
+    invite_code: String,
+    invite_code_prefix: String,
+}
+
 fn required_arg<'a>(args: &'a [String], index: usize, option: &str) -> Result<&'a str> {
     args.get(index)
         .map(String::as_str)
@@ -306,7 +429,13 @@ fn is_help(value: &str) -> bool {
 
 fn print_usage() {
     eprintln!(
-        "Usage:\n  sing-box-copilot create --name <name> --email <email> --password <password> [--json]\n  sing-box-copilot generate-config\n  sing-box-copilot generate-subscription <uuid> [--format <format>] [--output-dir <dir>]\n  sing-box-copilot generate-subscription-all [--format <format>] [--output-dir <dir>]\n  sing-box-copilot rotate <uuid> [--json]\n  sing-box-copilot enable <uuid>\n  sing-box-copilot disable <uuid>\n  sing-box-copilot inspect <uuid>"
+        "Usage:\n  sing-box-copilot bootstrap --name <name> --email <email> --password <password>\n  sing-box-copilot create --name <name> --email <email> --password <password> [--json]\n  sing-box-copilot generate-config\n  sing-box-copilot generate-subscription <uuid> [--format <format>] [--output-dir <dir>]\n  sing-box-copilot generate-subscription-all [--format <format>] [--output-dir <dir>]\n  sing-box-copilot rotate <uuid> [--json]\n  sing-box-copilot enable <uuid>\n  sing-box-copilot disable <uuid>\n  sing-box-copilot inspect <uuid>"
+    );
+}
+
+fn print_bootstrap_usage() {
+    eprintln!(
+        "Usage:\n  sing-box-copilot bootstrap --name <name> --email <email> --password <password>"
     );
 }
 

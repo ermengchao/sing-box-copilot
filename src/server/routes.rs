@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::{
     core::{
-        generate_user_secrets,
+        generate_invite_code, generate_user_secrets,
         subscription::{self, SubscriptionFormat},
         verify_password, User,
     },
@@ -65,15 +65,42 @@ impl MutationRoot {
         validate_required("name", &input.name)?;
         validate_required("email", &input.email)?;
         validate_required("password", &input.password)?;
+        validate_required("inviteCode", &input.invite_code)?;
 
         let state = ctx.data::<AppState>()?;
         validate_email_allowed(state, &input.email)?;
         let secrets = generate_user_secrets(&input.password)?;
+        let invite_code = input.invite_code.trim();
+        let mut tx = state
+            .pool
+            .begin()
+            .await
+            .map_err(|error| async_graphql::Error::new(format!("begin register: {error}")))?;
+
+        let inviter_uuid: Uuid = sqlx::query_scalar(
+            r#"
+            SELECT user_uuid
+            FROM user_invites
+            WHERE code = $1
+            "#,
+        )
+        .bind(invite_code)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|error| async_graphql::Error::new(format!("query invite code: {error}")))?
+        .ok_or_else(invalid_invite_code_error)?;
 
         let row = sqlx::query(
             r#"
-            INSERT INTO users (name, email, password_hash, token, token_prefix)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO users (
+                name,
+                email,
+                password_hash,
+                token,
+                token_prefix,
+                invited_by_uuid
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING uuid
             "#,
         )
@@ -82,9 +109,13 @@ impl MutationRoot {
         .bind(&secrets.password_hash)
         .bind(&secrets.token)
         .bind(&secrets.token_prefix)
-        .fetch_one(&state.pool)
+        .bind(inviter_uuid)
+        .fetch_one(&mut *tx)
         .await
         .map_err(|error| async_graphql::Error::new(format!("register user: {error}")))?;
+        tx.commit()
+            .await
+            .map_err(|error| async_graphql::Error::new(format!("commit register: {error}")))?;
 
         Ok(RegisterPayload {
             uuid: row
@@ -92,6 +123,41 @@ impl MutationRoot {
                 .map_err(|error| async_graphql::Error::new(format!("read uuid: {error}")))?,
             token: secrets.token,
             token_prefix: secrets.token_prefix,
+        })
+    }
+
+    async fn reset_invite_code(
+        &self,
+        ctx: &Context<'_>,
+        token: String,
+    ) -> Result<InviteCodePayload> {
+        validate_required("token", &token)?;
+
+        let state = ctx.data::<AppState>()?;
+        let user = load_enabled_user_by_token(state, &token).await?;
+        let invite = generate_invite_code();
+
+        sqlx::query(
+            r#"
+            INSERT INTO user_invites (user_uuid, code, code_prefix)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (user_uuid) DO UPDATE
+            SET code = EXCLUDED.code,
+                code_prefix = EXCLUDED.code_prefix,
+                rotated_at = now()
+            "#,
+        )
+        .bind(user.uuid)
+        .bind(&invite.invite_code)
+        .bind(&invite.invite_code_prefix)
+        .execute(&state.pool)
+        .await
+        .map_err(|error| async_graphql::Error::new(format!("reset invite code: {error}")))?;
+
+        Ok(InviteCodePayload {
+            uuid: user.uuid,
+            invite_code: invite.invite_code,
+            invite_code_prefix: invite.invite_code_prefix,
         })
     }
 
@@ -148,6 +214,7 @@ pub struct RegisterInput {
     pub name: String,
     pub email: String,
     pub password: String,
+    pub invite_code: String,
 }
 
 #[derive(async_graphql::InputObject)]
@@ -170,6 +237,13 @@ pub struct LoginPayload {
     pub email: String,
     pub token: String,
     pub token_prefix: String,
+}
+
+#[derive(SimpleObject)]
+pub struct InviteCodePayload {
+    pub uuid: Uuid,
+    pub invite_code: String,
+    pub invite_code_prefix: String,
 }
 
 #[derive(SimpleObject)]
@@ -323,4 +397,8 @@ fn validate_email_allowed(state: &AppState, email: &str) -> Result<()> {
 
 fn invalid_login_error() -> async_graphql::Error {
     async_graphql::Error::new("invalid email or password")
+}
+
+fn invalid_invite_code_error() -> async_graphql::Error {
+    async_graphql::Error::new("invalid invite code")
 }

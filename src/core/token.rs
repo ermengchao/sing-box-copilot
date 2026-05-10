@@ -31,6 +31,12 @@ pub struct GeneratedTokenSql {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct GeneratedInviteCode {
+    pub invite_code: String,
+    pub invite_code_prefix: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct UserSecrets {
     pub token: String,
     pub token_prefix: String,
@@ -111,6 +117,18 @@ pub fn rotate_token_sql(uuid: Uuid) -> GeneratedTokenSql {
     }
 }
 
+pub fn generate_invite_code() -> GeneratedInviteCode {
+    let mut bytes = [0u8; 6];
+    OsRng.fill_bytes(&mut bytes);
+    let invite_code = general_purpose::URL_SAFE_NO_PAD.encode(bytes);
+    let invite_code_prefix = invite_code.clone();
+
+    GeneratedInviteCode {
+        invite_code,
+        invite_code_prefix,
+    }
+}
+
 pub fn set_enabled_sql(uuid: Uuid, enabled: bool) -> String {
     format!(
         "UPDATE users\nSET enabled = {}\nWHERE uuid = '{}'\nRETURNING uuid;",
@@ -156,5 +174,17 @@ mod tests {
         let token = generate_token();
 
         assert!(token.token.starts_with(TOKEN_PREFIX));
+    }
+
+    #[test]
+    fn generated_invite_codes_are_eight_url_safe_chars() {
+        let invite = generate_invite_code();
+
+        assert_eq!(invite.invite_code.len(), 8);
+        assert_eq!(invite.invite_code_prefix, invite.invite_code);
+        assert!(invite
+            .invite_code
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_'));
     }
 }

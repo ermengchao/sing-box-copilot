@@ -9,9 +9,9 @@ pub mod token;
 
 pub use credentials::{derive_credentials, Credentials};
 pub use token::{
-    create_user_sql, generate_token, generate_user_secrets, hash_password, rotate_token_sql,
-    set_enabled_sql, verify_password, CreatedUserSql, GeneratedToken, GeneratedTokenSql,
-    UserSecrets, TOKEN_PREFIX,
+    create_user_sql, generate_invite_code, generate_token, generate_user_secrets, hash_password,
+    rotate_token_sql, set_enabled_sql, verify_password, CreatedUserSql, GeneratedInviteCode,
+    GeneratedToken, GeneratedTokenSql, UserSecrets, TOKEN_PREFIX,
 };
 
 #[derive(Debug, Clone)]
